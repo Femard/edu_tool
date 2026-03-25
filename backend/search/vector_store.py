@@ -3,7 +3,6 @@ from functools import lru_cache
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from llama_index.core import StorageContext, VectorStoreIndex
-from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
 from core.config import Settings
@@ -17,9 +16,18 @@ def _get_chroma_client(persist_dir: str) -> chromadb.ClientAPI:
     )
 
 
-@lru_cache(maxsize=1)
-def _get_embed_model(base_url: str, model_name: str) -> OllamaEmbedding:
-    return OllamaEmbedding(model_name=model_name, base_url=base_url)
+def delete_document(filename: str, settings: Settings) -> int:
+    """Delete all chunks for a given filename. Returns number of deleted chunks."""
+    client = _get_chroma_client(settings.chroma_persist_dir)
+    try:
+        collection = client.get_collection(settings.collection_name)
+    except Exception:
+        return 0
+    existing = collection.get(where={"filename": filename}, include=[])
+    count = len(existing.get("ids") or [])
+    if count > 0:
+        collection.delete(where={"filename": filename})
+    return count
 
 
 def get_document_list(settings: Settings) -> list[dict]:
@@ -46,10 +54,8 @@ def get_index(settings: Settings) -> VectorStoreIndex:
     collection = client.get_or_create_collection(settings.collection_name)
     vector_store = ChromaVectorStore(chroma_collection=collection)
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
-    embed_model = _get_embed_model(settings.ollama_base_url, settings.ollama_embedding_model)
 
     return VectorStoreIndex.from_vector_store(
         vector_store,
         storage_context=storage_context,
-        embed_model=embed_model,
     )

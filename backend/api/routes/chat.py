@@ -1,8 +1,11 @@
+import json
+
 import structlog
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from llama_index.core import Settings as LlamaSettings
 from llama_index.core.llms import ChatMessage, MessageRole
 from llama_index.core.vector_stores import ExactMatchFilter, FilterCondition, MetadataFilters
-from llama_index.llms.ollama import Ollama
 
 from api.schemas import ChatRequest, ChatResponse
 from core.config import Settings
@@ -28,80 +31,101 @@ def _build_file_filters(selected_files: list[str]) -> MetadataFilters | None:
     )
 
 
+def _get_context(
+    request: ChatRequest, settings: Settings
+) -> tuple[list[str], list[str], str]:
+    """Returns (context_parts, sources, mode_used)."""
+    if request.mode == "library":
+        parts, sources = _search_library(request.message, settings, request.selected_files)
+        return parts, sources, "library"
+
+    if request.mode == "web":
+        parts, sources = _search_web(request.message)
+        return parts, sources, "web" if parts else "none"
+
+    # auto
+    parts, sources = _search_library(request.message, settings, request.selected_files)
+    if parts:
+        return parts, sources, "library"
+    log.info("auto_fallback_web", message=request.message)
+    parts, sources = _search_web(request.message)
+    return parts, sources, "web" if parts else "none"
+
+
 def _search_library(
     query: str, settings: Settings, selected_files: list[str], top_k: int = 5
 ) -> tuple[list[str], list[str]]:
-    """Returns (context_parts, sources)."""
     index = get_index(settings)
     filters = _build_file_filters(selected_files)
     retriever = index.as_retriever(similarity_top_k=top_k, filters=filters)
     nodes = retriever.retrieve(query)
-    context_parts = [n.text for n in nodes]
+    parts = [n.text for n in nodes]
     sources = list({n.metadata.get("filename", "") for n in nodes if n.metadata.get("filename")})
-    return context_parts, sources
+    return parts, sources
 
 
 def _search_web(query: str) -> tuple[list[str], list[str]]:
-    """Returns (context_parts, sources)."""
     results = web_search(query, max_results=5)
-    context_parts = [f"{r.title}\n{r.snippet}" for r in results]
+    parts = [f"{r.title}\n{r.snippet}" for r in results]
     sources = [r.url for r in results]
-    return context_parts, sources
+    return parts, sources
 
 
-async def _generate(
-    message: str,
-    context_parts: list[str],
-    settings: Settings,
-) -> str:
+def _build_messages(message: str, context_parts: list[str]) -> list[ChatMessage]:
     context = "\n\n---\n\n".join(context_parts) if context_parts else "Aucun contexte disponible."
-    user_content = f"Contexte :\n{context}\n\nQuestion du professeur : {message}"
-
-    llm = Ollama(
-        model=settings.ollama_model,
-        base_url=settings.ollama_base_url,
-        request_timeout=90.0,
-    )
-    messages = [
+    return [
         ChatMessage(role=MessageRole.SYSTEM, content=SYSTEM_PROMPT),
-        ChatMessage(role=MessageRole.USER, content=user_content),
+        ChatMessage(
+            role=MessageRole.USER,
+            content=f"Contexte :\n{context}\n\nQuestion du professeur : {message}",
+        ),
     ]
-    try:
-        response = await llm.achat(messages)
-    except Exception as exc:
-        log.error("ollama_chat_error", error=str(exc))
-        raise HTTPException(status_code=503, detail=f"Erreur Ollama : {exc}") from exc
 
-    return response.message.content or ""
 
+# ── Non-streaming (kept for compatibility) ────────────────────────────────────
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
     settings = Settings()
-    context_parts: list[str] = []
-    sources: list[str] = []
-    mode_used = "none"
+    context_parts, sources, mode_used = _get_context(request, settings)
+    messages = _build_messages(request.message, context_parts)
 
-    if request.mode == "library":
-        context_parts, sources = _search_library(
-            request.message, settings, request.selected_files
-        )
-        mode_used = "library"
+    try:
+        response = await LlamaSettings.llm.achat(messages)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Erreur Ollama : {exc}") from exc
 
-    elif request.mode == "web":
-        context_parts, sources = _search_web(request.message)
-        mode_used = "web"
+    return ChatResponse(answer=response.message.content or "", sources=sources, mode_used=mode_used)
 
-    else:  # auto
-        context_parts, sources = _search_library(
-            request.message, settings, request.selected_files
-        )
-        if context_parts:
-            mode_used = "library"
-        else:
-            log.info("auto_fallback_web", message=request.message)
-            context_parts, sources = _search_web(request.message)
-            mode_used = "web" if context_parts else "none"
 
-    answer = await _generate(request.message, context_parts, settings)
-    return ChatResponse(answer=answer, sources=sources, mode_used=mode_used)
+# ── Streaming (SSE) ────────────────────────────────────────────────────────────
+
+async def _sse_stream(request: ChatRequest, settings: Settings):
+    """Async generator yielding SSE-formatted events."""
+    context_parts, sources, mode_used = _get_context(request, settings)
+
+    # Send metadata before first token
+    yield f"data: {json.dumps({'type': 'meta', 'sources': sources, 'mode_used': mode_used}, ensure_ascii=False)}\n\n"
+
+    messages = _build_messages(request.message, context_parts)
+
+    try:
+        async for chunk in await LlamaSettings.llm.astream_chat(messages):
+            delta = chunk.delta or ""
+            if delta:
+                yield f"data: {json.dumps({'type': 'token', 'text': delta}, ensure_ascii=False)}\n\n"
+    except Exception as exc:
+        log.error("stream_chat_error", error=str(exc))
+        yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
+
+    yield 'data: {"type": "done"}\n\n'
+
+
+@router.post("/chat/stream")
+async def chat_stream(request: ChatRequest) -> StreamingResponse:
+    settings = Settings()
+    return StreamingResponse(
+        _sse_stream(request, settings),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

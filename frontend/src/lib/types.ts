@@ -68,3 +68,30 @@ export interface ChatResponse {
   sources: string[];
   mode_used: string;
 }
+
+export interface GovResource {
+  id: string;
+  title: string;
+  url: string;
+  format: string;
+  description: string;
+}
+
+export interface GovDataset {
+  id: string;
+  title: string;
+  organization: string;
+  description: string;
+  resources: GovResource[];
+}
+
+export interface GovSearchResponse {
+  datasets: GovDataset[];
+  query: string;
+}
+
+export type SSEEvent =
+  | { type: "meta"; sources: string[]; mode_used: string }
+  | { type: "token"; text: string }
+  | { type: "error"; message: string }
+  | { type: "done" };

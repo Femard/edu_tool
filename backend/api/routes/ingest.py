@@ -78,11 +78,11 @@ def _ingest_url_task(body: IngestUrlRequest) -> None:
     try:
         text, doc_type = fetch_and_extract(body.url)
         metadata = {
-            "cycle": body.cycle or "Cycle 2",
-            "niveau": "CM1",
-            "domaine": body.domaine or "Français",
-            "type_ressource": "Texte officiel",
-            "source": "Web_Curate",
+            "cycle": body.cycle,
+            "niveau": body.niveau,
+            "domaine": body.domaine,
+            "type_ressource": body.type_ressource,
+            "source": body.source,
             "filename": filename_from_url(body.url),
             "page_number": 1,
         }

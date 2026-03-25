@@ -1,7 +1,7 @@
 import structlog
 from fastapi import APIRouter, HTTPException
+from llama_index.core import Settings as LlamaSettings
 from llama_index.core.llms import ChatMessage, MessageRole
-from llama_index.llms.ollama import Ollama
 
 from api.schemas import GenerateRequest, GenerateResponse
 from core.config import Settings
@@ -46,15 +46,13 @@ async def generate_answer(request: GenerateRequest) -> GenerateResponse:
     context = "\n\n---\n\n".join(context_parts)
     user_message = f"Extraits de ressources :\n{context}\n\nQuestion : {request.query}"
 
-    llm = Ollama(model=settings.ollama_model, base_url=settings.ollama_base_url, request_timeout=60.0)
-
     messages = [
         ChatMessage(role=MessageRole.SYSTEM, content=SYSTEM_PROMPT),
         ChatMessage(role=MessageRole.USER, content=user_message),
     ]
 
     try:
-        response = await llm.achat(messages)
+        response = await LlamaSettings.llm.achat(messages)
     except Exception as exc:
         log.error("ollama_generate_error", error=str(exc))
         raise HTTPException(status_code=503, detail=f"Erreur Ollama : {exc}") from exc

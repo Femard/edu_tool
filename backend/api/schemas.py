@@ -79,8 +79,10 @@ class WebSearchResponse(BaseModel):
 
 class IngestUrlRequest(BaseModel):
     url: str
-    cycle: Optional[str] = None
-    domaine: Optional[str] = None
+    cycle: str
+    niveau: str
+    domaine: str
+    type_ressource: str
     source: str = "Web_Curate"
 
 
@@ -88,3 +90,43 @@ class IngestUrlResponse(BaseModel):
     status: str
     message: str
     url: str
+
+
+# --- Gov MCP schemas ---
+
+class GovResourceSchema(BaseModel):
+    id: str
+    title: str
+    url: str
+    format: str
+    description: str
+
+
+class GovDatasetSchema(BaseModel):
+    id: str
+    title: str
+    organization: str
+    description: str
+    resources: list[GovResourceSchema] = []
+
+
+class GovSearchResponse(BaseModel):
+    datasets: list[GovDatasetSchema]
+    query: str
+
+
+class GovIngestRequest(BaseModel):
+    dataset_id: str
+    resource_id: str
+    resource_url: str
+    resource_title: str
+    cycle: str
+    niveau: str
+    domaine: str
+    type_ressource: str
+
+
+class GovIngestResponse(BaseModel):
+    status: str
+    message: str
+    resource_id: str

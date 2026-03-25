@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getDocuments, sendChatMessage } from "@/lib/api";
+import { getDocuments, streamChatMessage } from "@/lib/api";
 import type { ChatMessage, ChatMode, DocumentInfo } from "@/lib/types";
 
 const MODE_LABELS: Record<ChatMode, string> = {
@@ -51,28 +51,47 @@ export function ChatTab() {
     const text = input.trim();
     if (!text || loading) return;
 
-    const userMsg: ChatMessage = { id: newId(), role: "user", content: text };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => [...prev, { id: newId(), role: "user", content: text }]);
     setInput("");
     setLoading(true);
 
+    const assistantId = newId();
+    setMessages((prev) => [...prev, { id: assistantId, role: "assistant", content: "" }]);
+
     try {
-      const res = await sendChatMessage(text, mode, selectedFiles);
-      const assistantMsg: ChatMessage = {
-        id: newId(),
-        role: "assistant",
-        content: res.answer,
-        sources: res.sources,
-        modeUsed: res.mode_used as ChatMessage["modeUsed"],
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-    } catch (e) {
-      const errMsg: ChatMessage = {
-        id: newId(),
-        role: "assistant",
-        content: e instanceof Error ? `Erreur : ${e.message}` : "Une erreur est survenue.",
-      };
-      setMessages((prev) => [...prev, errMsg]);
+      for await (const event of streamChatMessage(text, mode, selectedFiles)) {
+        if (event.type === "meta") {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? { ...m, sources: event.sources, modeUsed: event.mode_used as ChatMessage["modeUsed"] }
+                : m
+            )
+          );
+        } else if (event.type === "token") {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, content: m.content + event.text } : m
+            )
+          );
+        } else if (event.type === "error") {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, content: `Erreur : ${event.message}` } : m
+            )
+          );
+        } else if (event.type === "done") {
+          break;
+        }
+      }
+    } catch (err) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? { ...m, content: err instanceof Error ? `Erreur : ${err.message}` : "Une erreur est survenue." }
+            : m
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -184,14 +203,6 @@ export function ChatTab() {
             </div>
           </div>
         ))}
-
-        {loading && (
-          <div className="flex justify-start">
-            <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-sm px-4 py-3">
-              <span className="text-sm text-gray-400 animate-pulse">Mistral réfléchit…</span>
-            </div>
-          </div>
-        )}
 
         <div ref={bottomRef} />
       </div>

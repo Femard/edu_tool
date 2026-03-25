@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:data.education.gouv.fr)",
+      "WebFetch(domain:github.com)"
+    ]
+  }
+}
