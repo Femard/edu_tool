@@ -27,3 +27,16 @@ export interface SearchFilters {
   domaine?: string;
   type_ressource?: string;
 }
+
+export interface WebSearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+export interface WebSearchResponse {
+  results: WebSearchResult[];
+  query: string;
+}
+
+export type IngestStatus = "idle" | "loading" | "success" | "error";

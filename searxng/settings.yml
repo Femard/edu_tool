@@ -1,0 +1,24 @@
+use_default_settings: true
+
+server:
+  secret_key: "edu_tool_poc_secret_change_in_prod"
+  limiter: false
+  image_proxy: false
+
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json
+
+engines:
+  - name: google
+    engine: google
+    shortcut: g
+    language: fr
+  - name: bing
+    engine: bing
+    shortcut: b
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: d

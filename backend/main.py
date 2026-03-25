@@ -5,7 +5,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import generate, ingest, search
+from api.routes import generate, ingest, search, web_search
 from core.logging import configure_logging
 
 configure_logging()
@@ -37,6 +37,7 @@ app.add_middleware(
 app.include_router(search.router, prefix="/api/v1", tags=["search"])
 app.include_router(ingest.router, prefix="/api/v1", tags=["ingest"])
 app.include_router(generate.router, prefix="/api/v1", tags=["generate"])
+app.include_router(web_search.router, prefix="/api/v1", tags=["web-search"])
 
 
 @app.get("/health", tags=["system"])

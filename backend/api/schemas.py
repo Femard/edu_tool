@@ -41,3 +41,27 @@ class GenerateRequest(BaseModel):
 class GenerateResponse(BaseModel):
     answer: str
     sources: list[str]
+
+
+class WebSearchResult(BaseModel):
+    title: str
+    url: str
+    snippet: str
+
+
+class WebSearchResponse(BaseModel):
+    results: list[WebSearchResult]
+    query: str
+
+
+class IngestUrlRequest(BaseModel):
+    url: str
+    cycle: Optional[str] = None
+    domaine: Optional[str] = None
+    source: str = "Web_Curate"
+
+
+class IngestUrlResponse(BaseModel):
+    status: str
+    message: str
+    url: str
