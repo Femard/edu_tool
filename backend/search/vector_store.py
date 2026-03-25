@@ -22,6 +22,24 @@ def _get_embed_model(base_url: str, model_name: str) -> OllamaEmbedding:
     return OllamaEmbedding(model_name=model_name, base_url=base_url)
 
 
+def get_document_list(settings: Settings) -> list[dict]:
+    """Return one metadata dict per unique filename in the collection."""
+    client = _get_chroma_client(settings.chroma_persist_dir)
+    try:
+        collection = client.get_collection(settings.collection_name)
+    except Exception:
+        return []
+    result = collection.get(include=["metadatas"])
+    seen: set[str] = set()
+    docs: list[dict] = []
+    for meta in result.get("metadatas") or []:
+        fname = meta.get("filename", "")
+        if fname and fname not in seen:
+            seen.add(fname)
+            docs.append(meta)
+    return docs
+
+
 def get_index(settings: Settings) -> VectorStoreIndex:
     """Return a LlamaIndex VectorStoreIndex backed by ChromaDB."""
     client = _get_chroma_client(settings.chroma_persist_dir)

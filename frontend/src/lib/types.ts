@@ -40,3 +40,31 @@ export interface WebSearchResponse {
 }
 
 export type IngestStatus = "idle" | "loading" | "success" | "error";
+
+export interface GenerateResponse {
+  answer: string;
+  sources: string[];
+}
+
+export interface DocumentInfo {
+  filename: string;
+  source: string;
+  cycle: string;
+  domaine: string;
+}
+
+export type ChatMode = "auto" | "library" | "web";
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources?: string[];
+  modeUsed?: "library" | "web" | "none";
+}
+
+export interface ChatResponse {
+  answer: string;
+  sources: string[];
+  mode_used: string;
+}

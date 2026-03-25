@@ -1,6 +1,7 @@
-import httpx
 import structlog
 from fastapi import APIRouter, HTTPException
+from llama_index.core.llms import ChatMessage, MessageRole
+from llama_index.llms.ollama import Ollama
 
 from api.schemas import GenerateRequest, GenerateResponse
 from core.config import Settings
@@ -45,35 +46,18 @@ async def generate_answer(request: GenerateRequest) -> GenerateResponse:
     context = "\n\n---\n\n".join(context_parts)
     user_message = f"Extraits de ressources :\n{context}\n\nQuestion : {request.query}"
 
-    payload = {
-        "model": settings.ollama_model,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_message},
-        ],
-        "stream": False,
-    }
+    llm = Ollama(model=settings.ollama_model, base_url=settings.ollama_base_url, request_timeout=60.0)
+
+    messages = [
+        ChatMessage(role=MessageRole.SYSTEM, content=SYSTEM_PROMPT),
+        ChatMessage(role=MessageRole.USER, content=user_message),
+    ]
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{settings.ollama_base_url}/api/chat",
-                json=payload,
-            )
-            response.raise_for_status()
-    except httpx.ConnectError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Impossible de joindre Ollama sur {settings.ollama_base_url}. "
-                   "Vérifiez qu'Ollama est bien lancé.",
-        ) from exc
-    except httpx.HTTPStatusError as exc:
-        log.error("ollama_error", status=exc.response.status_code, body=exc.response.text)
-        raise HTTPException(
-            status_code=502,
-            detail=f"Erreur Ollama ({exc.response.status_code}) : {exc.response.text}",
-        ) from exc
+        response = await llm.achat(messages)
+    except Exception as exc:
+        log.error("ollama_generate_error", error=str(exc))
+        raise HTTPException(status_code=503, detail=f"Erreur Ollama : {exc}") from exc
 
-    data = response.json()
-    answer: str = data.get("message", {}).get("content", "")
+    answer: str = response.message.content or ""
     return GenerateResponse(answer=answer, sources=sources)

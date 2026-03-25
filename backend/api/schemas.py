@@ -43,6 +43,29 @@ class GenerateResponse(BaseModel):
     sources: list[str]
 
 
+class DocumentInfo(BaseModel):
+    filename: str
+    source: str
+    cycle: str
+    domaine: str
+
+
+class DocumentListResponse(BaseModel):
+    documents: list[DocumentInfo]
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(..., min_length=1)
+    mode: str = Field(default="auto", pattern="^(auto|library|web)$")
+    selected_files: list[str] = Field(default_factory=list)
+
+
+class ChatResponse(BaseModel):
+    answer: str
+    sources: list[str]
+    mode_used: str  # "library" | "web" | "none"
+
+
 class WebSearchResult(BaseModel):
     title: str
     url: str

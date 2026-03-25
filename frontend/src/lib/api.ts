@@ -1,4 +1,4 @@
-import type { SearchFilters, SearchResponse, WebSearchResponse } from "./types";
+import type { ChatMode, ChatResponse, DocumentInfo, GenerateResponse, SearchFilters, SearchResponse, WebSearchResponse } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -28,6 +28,46 @@ export async function webSearch(q: string, maxResults = 8): Promise<WebSearchRes
     throw new Error(`Erreur ${res.status} : ${detail}`);
   }
   return res.json() as Promise<WebSearchResponse>;
+}
+
+export async function generateExercice(
+  query: string,
+  chunkId: string,
+): Promise<GenerateResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, context_chunk_ids: [chunkId] }),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Erreur ${res.status} : ${detail}`);
+  }
+  return res.json() as Promise<GenerateResponse>;
+}
+
+export async function getDocuments(): Promise<DocumentInfo[]> {
+  const res = await fetch(`${API_BASE}/api/v1/documents`);
+  if (!res.ok) throw new Error(`Erreur ${res.status}`);
+  const data = await res.json() as { documents: DocumentInfo[] };
+  return data.documents;
+}
+
+export async function sendChatMessage(
+  message: string,
+  mode: ChatMode,
+  selectedFiles: string[],
+): Promise<ChatResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, mode, selected_files: selectedFiles }),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Erreur ${res.status} : ${detail}`);
+  }
+  return res.json() as Promise<ChatResponse>;
 }
 
 export async function ingestUrl(

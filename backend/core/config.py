@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     collection_name: str = "edu_documents"
     chunk_size: int = 512
     chunk_overlap: int = 64
+    cors_origins: list[str] = ["http://localhost:3000", "http://frontend:3000"]
     searxng_url: str = "http://searxng:8080"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "mistral"

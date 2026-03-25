@@ -4,12 +4,13 @@ import { useState } from "react";
 import { FilterPanel } from "@/components/FilterPanel";
 import { ResultList } from "@/components/ResultList";
 import { SearchBar } from "@/components/SearchBar";
+import { ChatTab } from "@/components/ChatTab";
 import { WebResultCard } from "@/components/WebResultCard";
 import { useSearch } from "@/hooks/useSearch";
 import { useWebSearch } from "@/hooks/useWebSearch";
 import type { SearchFilters } from "@/lib/types";
 
-type Tab = "web" | "library";
+type Tab = "web" | "library" | "chat";
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<Tab>("library");
@@ -64,6 +65,16 @@ export default function HomePage() {
           >
             📚 Ma Bibliothèque
           </button>
+          <button
+            onClick={() => setActiveTab("chat")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === "chat"
+                ? "bg-blue-600 text-white"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            🤖 Assistant
+          </button>
         </div>
 
         {/* Onglet : Explorer le Web */}
@@ -101,6 +112,9 @@ export default function HomePage() {
             )}
           </>
         )}
+
+        {/* Onglet : Assistant */}
+        {activeTab === "chat" && <ChatTab />}
 
         {/* Onglet : Ma Bibliothèque */}
         {activeTab === "library" && (
