@@ -1,7 +1,7 @@
 use_default_settings: true
 
 server:
-  secret_key: "CHANGE_ME_run_openssl_rand_hex_32"  # Remplacer en production !
+  secret_key: "85fc6af96e05be08d4bc5c8f73214cd90e62e18d53c2391afc64de50f8543b73"
   limiter: false
   image_proxy: false
 
