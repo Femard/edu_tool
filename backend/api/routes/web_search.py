@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from api.schemas import WebSearchResponse
+from search.web_search import eduscol_search as _eduscol_search
 from search.web_search import web_search as _web_search
 
 router = APIRouter()
@@ -15,4 +16,16 @@ async def web_search_route(
         results = _web_search(q, max_results)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Erreur de recherche web : {exc}") from exc
+    return WebSearchResponse(results=results, query=q)
+
+
+@router.get("/eduscol-search", response_model=WebSearchResponse)
+async def eduscol_search_route(
+    q: str = Query(..., min_length=1),
+    max_results: int = Query(default=12, ge=1, le=30),
+) -> WebSearchResponse:
+    try:
+        results = _eduscol_search(q, max_results)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Erreur recherche Éduscol : {exc}") from exc
     return WebSearchResponse(results=results, query=q)

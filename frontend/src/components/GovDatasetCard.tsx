@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { govGetResources, govIngest, type GovIngestMeta } from "@/lib/api";
+import { govGetResources, govIngest, ingestUrl, type GovIngestMeta, type IngestUrlMeta } from "@/lib/api";
+import { addPendingIngestion } from "@/lib/pendingIngestions";
 import type { GovDataset, GovResource, IngestStatus } from "@/lib/types";
 
 const CYCLES = ["Cycle 1", "Cycle 2", "Cycle 3"];
@@ -10,7 +11,7 @@ const DOMAINES = [
   "Français", "Mathématiques", "Sciences", "Histoire-Géographie",
   "Espace/Temps", "Arts Plastiques", "EPS", "EMC",
 ];
-const TYPES = ["Exercice", "Leçon", "Fiche de préparation", "Texte officiel", "Évaluation"];
+const TYPES = ["Exercice", "Leçon", "Fiche de préparation", "Texte officiel", "Évaluation", "Pédagogique"];
 
 const DEFAULT_META: GovIngestMeta = {
   cycle: "Cycle 2",
@@ -32,7 +33,10 @@ function ResourceRow({ datasetId, resource }: { datasetId: string; resource: Gov
     setShowModal(false);
     setStatus("loading");
     try {
-      await govIngest(datasetId, resource, meta);
+      const effectiveMeta = meta.type_ressource === "Pédagogique" ? { ...meta, domaine: "" } : meta;
+      await govIngest(datasetId, resource, effectiveMeta);
+      addPendingIngestion(resource.title, { cycle: meta.cycle, domaine: effectiveMeta.domaine, source: "Gov" });
+      window.dispatchEvent(new Event("pendingIngestionAdded"));
       setStatus("success");
     } catch {
       setStatus("error");
@@ -90,7 +94,8 @@ function ResourceRow({ datasetId, resource }: { datasetId: string; resource: Gov
                   { label: "Domaine", field: "domaine" as const, options: DOMAINES },
                   { label: "Type de ressource", field: "type_ressource" as const, options: TYPES },
                 ] as const
-              ).map(({ label, field, options }) => (
+              ).filter(({ field }) => !(field === "domaine" && meta.type_ressource === "Pédagogique"))
+              .map(({ label, field, options }) => (
                 <label key={field} className="flex flex-col gap-1">
                   <span className="text-xs font-medium text-gray-600">{label}</span>
                   <select
@@ -124,16 +129,92 @@ function ResourceRow({ datasetId, resource }: { datasetId: string; resource: Gov
   );
 }
 
+function DatasetAddButton({ dataset }: { dataset: GovDataset }) {
+  const [status, setStatus] = useState<IngestStatus>("idle");
+  const [showModal, setShowModal] = useState(false);
+  const [meta, setMeta] = useState<IngestUrlMeta>({ ...DEFAULT_META });
+
+  const datasetUrl = `https://www.data.gouv.fr/fr/datasets/${dataset.id}/`;
+
+  async function handleConfirm() {
+    setShowModal(false);
+    setStatus("loading");
+    try {
+      const effectiveMeta = meta.type_ressource === "Pédagogique" ? { ...meta, domaine: "" } : meta;
+      await ingestUrl(datasetUrl, effectiveMeta);
+      addPendingIngestion(dataset.title, { cycle: meta.cycle, domaine: effectiveMeta.domaine, source: "Gov" });
+      window.dispatchEvent(new Event("pendingIngestionAdded"));
+      setStatus("success");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => { if (status === "error") setStatus("idle"); if (status === "idle" || status === "error") setShowModal(true); }}
+        disabled={status === "loading" || status === "success"}
+        className={`shrink-0 text-xs px-2.5 py-1 rounded-full border transition-colors ${
+          status === "success" ? "border-green-200 bg-green-50 text-green-700"
+          : status === "error" ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+          : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+        } disabled:opacity-60`}
+      >
+        {status === "loading" ? "…" : status === "success" ? "✅" : status === "error" ? "❌" : "📥 Ajouter"}
+      </button>
+
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 flex flex-col gap-4">
+            <div>
+              <h2 className="text-base font-semibold text-gray-800">Classer ce dataset</h2>
+              <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{dataset.title}</p>
+            </div>
+            <div className="flex flex-col gap-3">
+              {([
+                { label: "Cycle", field: "cycle", options: CYCLES },
+                { label: "Niveau", field: "niveau", options: NIVEAUX },
+                { label: "Domaine", field: "domaine", options: DOMAINES },
+                { label: "Type de ressource", field: "type_ressource", options: TYPES },
+              ] as { label: string; field: keyof IngestUrlMeta; options: string[] }[])
+                .filter(({ field }) => !(field === "domaine" && meta.type_ressource === "Pédagogique"))
+                .map(({ label, field, options }) => (
+                  <label key={field} className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-gray-600">{label}</span>
+                    <select
+                      value={meta[field]}
+                      onChange={(e) => setMeta((p) => ({ ...p, [field]: e.target.value }))}
+                      className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    >
+                      {options.map((o) => <option key={o}>{o}</option>)}
+                    </select>
+                  </label>
+                ))}
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setShowModal(false)} className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+              <button onClick={handleConfirm} className="flex-1 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">Ajouter</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function GovDatasetCard({ dataset }: { dataset: GovDataset }) {
   const [expanded, setExpanded] = useState(false);
   const [resources, setResources] = useState<GovResource[]>([]);
   const [loadingRes, setLoadingRes] = useState(false);
   const [resError, setResError] = useState<string | null>(null);
 
+  const datasetUrl = `https://www.data.gouv.fr/fr/datasets/${dataset.id}/`;
+
   async function handleExpand() {
     if (expanded) { setExpanded(false); return; }
     setExpanded(true);
-    if (resources.length > 0) return; // déjà chargées
+    if (resources.length > 0) return;
     setLoadingRes(true);
     setResError(null);
     try {
@@ -150,20 +231,30 @@ export function GovDatasetCard({ dataset }: { dataset: GovDataset }) {
     <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-2 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-800 line-clamp-2">{dataset.title}</p>
+          <a
+            href={datasetUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm font-medium text-blue-700 hover:underline line-clamp-2"
+          >
+            {dataset.title}
+          </a>
           {dataset.organization && (
-            <p className="text-xs text-blue-600 mt-0.5">{dataset.organization}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{dataset.organization}</p>
           )}
           {dataset.description && (
-            <p className="text-xs text-gray-500 mt-1 line-clamp-2">{dataset.description}</p>
+            <p className="text-xs text-gray-400 mt-1 line-clamp-2">{dataset.description}</p>
           )}
         </div>
-        <button
-          onClick={handleExpand}
-          className="shrink-0 text-xs px-2.5 py-1 rounded-full border border-gray-200 text-gray-500 hover:border-gray-400 transition-colors"
-        >
-          {expanded ? "▲ Fermer" : "▼ Ressources"}
-        </button>
+        <div className="flex flex-col gap-1 shrink-0">
+          <DatasetAddButton dataset={dataset} />
+          <button
+            onClick={handleExpand}
+            className="text-xs px-2.5 py-1 rounded-full border border-gray-200 text-gray-500 hover:border-gray-400 transition-colors"
+          >
+            {expanded ? "▲ Fermer" : "▼ Fichiers"}
+          </button>
+        </div>
       </div>
 
       {expanded && (

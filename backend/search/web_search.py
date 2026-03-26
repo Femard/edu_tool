@@ -17,6 +17,33 @@ TRUSTED_SITES = [
 ]
 
 
+def eduscol_search(query: str, max_results: int = 12) -> list[WebSearchResult]:
+    """Recherche ciblée sur eduscol.education.gouv.fr uniquement."""
+    full_query = f"{query} eduscol programmes officiels"
+    log.info("eduscol_search_start", query=full_query)
+
+    settings = Settings()
+    params = {"q": full_query, "format": "json", "pageno": 1}
+
+    with httpx.Client(timeout=15) as client:
+        resp = client.get(f"{settings.searxng_url}/search", params=params)
+        resp.raise_for_status()
+        data = resp.json()
+
+    results = [
+        WebSearchResult(
+            title=r.get("title", ""),
+            url=r.get("url", ""),
+            snippet=r.get("content", ""),
+        )
+        for r in data.get("results", [])
+        if "eduscol.education.gouv.fr" in r.get("url", "")
+    ][:max_results]
+
+    log.info("eduscol_search_done", count=len(results))
+    return results
+
+
 def web_search(query: str, max_results: int = 8) -> list[WebSearchResult]:
     site_filter = " OR ".join(f"site:{s}" for s in TRUSTED_SITES)
     full_query = f"{query} {site_filter}"

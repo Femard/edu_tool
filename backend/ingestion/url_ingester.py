@@ -1,6 +1,6 @@
 import tempfile
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import httpx
 import structlog
@@ -10,7 +10,7 @@ from ingestion.pdf_reader import extract_pages
 
 log = structlog.get_logger()
 
-_HEADERS = {"User-Agent": "EduTool/1.0 (ressources pédagogiques)"}
+_HEADERS = {"User-Agent": "EduTool/1.0 (ressources pedagogiques)"}
 
 
 def fetch_and_extract(url: str) -> tuple[str, str]:
@@ -62,5 +62,7 @@ def _extract_html(html: str) -> tuple[str, str]:
 
 def filename_from_url(url: str) -> str:
     path = urlparse(url).path
-    name = path.split("/")[-1] or "page_web"
-    return name[:100]  # limite la longueur
+    name = unquote(path.split("/")[-1] or "page_web")
+    # Strip any non-ASCII to keep ChromaDB metadata safe
+    name = name.encode("ascii", errors="ignore").decode("ascii") or "page_web"
+    return name[:100]

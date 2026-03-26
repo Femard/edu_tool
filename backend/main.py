@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from llama_index.core import Settings as LlamaSettings
 from llama_index.embeddings.ollama import OllamaEmbedding
-from llama_index.llms.ollama import Ollama
+from llama_index.llms.mistralai import MistralAI
 
 from api.routes import chat, documents, generate, gouv, ingest, search, web_search
 from core.config import Settings
@@ -19,16 +19,16 @@ log = structlog.get_logger()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = Settings()
-    LlamaSettings.llm = Ollama(
-        model=settings.ollama_model,
-        base_url=settings.ollama_base_url,
-        request_timeout=90.0,
+    LlamaSettings.llm = MistralAI(
+        model=settings.mistral_model,
+        api_key=settings.mistral_api_key,
+        max_tokens=4096,
     )
     LlamaSettings.embed_model = OllamaEmbedding(
         model_name=settings.ollama_embedding_model,
         base_url=settings.ollama_base_url,
     )
-    log.info("startup", service="edu_tool_backend", llm=settings.ollama_model)
+    log.info("startup", service="edu_tool_backend", llm=settings.mistral_model)
     yield
     log.info("shutdown", service="edu_tool_backend")
 

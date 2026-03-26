@@ -19,6 +19,7 @@ const TYPES = [
   "Fiche de préparation",
   "Texte officiel",
   "Évaluation",
+  "Pédagogique",
 ];
 
 interface FilterPanelProps {

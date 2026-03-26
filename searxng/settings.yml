@@ -1,7 +1,7 @@
 use_default_settings: true
 
 server:
-  secret_key: "edu_tool_poc_secret_change_in_prod"
+  secret_key: "CHANGE_ME_run_openssl_rand_hex_32"  # Remplacer en production !
   limiter: false
   image_proxy: false
 

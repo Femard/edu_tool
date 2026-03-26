@@ -83,6 +83,7 @@ def _ingest_url_task(body: IngestUrlRequest) -> None:
             "domaine": body.domaine,
             "type_ressource": body.type_ressource,
             "source": body.source,
+            "source_url": body.url,
             "filename": filename_from_url(body.url),
             "page_number": 1,
         }

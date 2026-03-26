@@ -48,6 +48,8 @@ class DocumentInfo(BaseModel):
     source: str
     cycle: str
     domaine: str
+    source_url: str = ""
+    type_ressource: str = ""
 
 
 class DocumentListResponse(BaseModel):

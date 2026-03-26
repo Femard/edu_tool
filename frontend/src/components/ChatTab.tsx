@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getDocuments, streamChatMessage } from "@/lib/api";
+import { Markdown } from "@/components/Markdown";
 import type { ChatMessage, ChatMode, DocumentInfo } from "@/lib/types";
 
 const MODE_LABELS: Record<ChatMode, string> = {
@@ -16,29 +17,86 @@ const MODE_USED_BADGE: Record<string, string> = {
   none: "Sans contexte",
 };
 
+interface Conversation {
+  id: string;
+  name: string;
+  messages: ChatMessage[];
+  updatedAt: number;
+}
+
+const STORAGE_KEY = "edu_tool_conversations";
+const MAX_CONVS = 20;
+
 let msgCounter = 0;
-function newId() {
-  return `msg-${++msgCounter}`;
+function newId() { return `msg-${++msgCounter}`; }
+function newConvId() { return `conv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; }
+
+function loadConversations(): Conversation[] {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]") as Conversation[];
+  } catch { return []; }
+}
+
+function saveConversations(convs: Conversation[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(convs.slice(0, MAX_CONVS)));
+  } catch { /* storage full */ }
 }
 
 export function ChatTab() {
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<ChatMode>("auto");
   const [docs, setDocs] = useState<DocumentInfo[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Load available documents
   useEffect(() => {
+    setConversations(loadConversations());
     getDocuments().then(setDocs).catch(() => setDocs([]));
   }, []);
 
-  // Scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  function newConversation() {
+    setActiveId(null);
+    setMessages([]);
+    setInput("");
+    setSelectedFiles([]);
+    setShowHistory(false);
+  }
+
+  function loadConversation(conv: Conversation) {
+    setActiveId(conv.id);
+    setMessages(conv.messages);
+    setShowHistory(false);
+  }
+
+  function deleteConversation(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    const updated = conversations.filter((c) => c.id !== id);
+    setConversations(updated);
+    saveConversations(updated);
+    if (activeId === id) newConversation();
+  }
+
+  function persistMessages(convId: string, msgs: ChatMessage[], convName?: string) {
+    setConversations((prev) => {
+      const existing = prev.find((c) => c.id === convId);
+      const name = convName ?? existing?.name ?? "Nouvelle conversation";
+      const updated: Conversation = { id: convId, name, messages: msgs, updatedAt: Date.now() };
+      const others = prev.filter((c) => c.id !== convId);
+      const next = [updated, ...others];
+      saveConversations(next);
+      return next;
+    });
+  }
 
   function toggleFile(filename: string) {
     setSelectedFiles((prev) =>
@@ -51,12 +109,20 @@ export function ChatTab() {
     const text = input.trim();
     if (!text || loading) return;
 
-    setMessages((prev) => [...prev, { id: newId(), role: "user", content: text }]);
+    const convId = activeId ?? newConvId();
+    if (!activeId) setActiveId(convId);
+
+    const userMsg: ChatMessage = { id: newId(), role: "user", content: text };
+    const assistantId = newId();
+    const assistantMsg: ChatMessage = { id: assistantId, role: "assistant", content: "" };
+
+    const nextMessages = [...messages, userMsg, assistantMsg];
+    setMessages(nextMessages);
     setInput("");
     setLoading(true);
 
-    const assistantId = newId();
-    setMessages((prev) => [...prev, { id: assistantId, role: "assistant", content: "" }]);
+    const isFirst = messages.length === 0;
+    const convName = isFirst ? text.slice(0, 50) : undefined;
 
     try {
       for await (const event of streamChatMessage(text, mode, selectedFiles)) {
@@ -84,6 +150,10 @@ export function ChatTab() {
           break;
         }
       }
+      setMessages((prev) => {
+        persistMessages(convId, prev, convName);
+        return prev;
+      });
     } catch (err) {
       setMessages((prev) =>
         prev.map((m) =>
@@ -100,10 +170,55 @@ export function ChatTab() {
   return (
     <div className="w-full max-w-2xl flex flex-col gap-3">
 
+      {/* History bar */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
+          <button
+            onClick={() => setShowHistory((v) => !v)}
+            className="text-xs text-gray-500 hover:text-gray-700 font-medium flex items-center gap-1"
+          >
+            💬 Conversations {conversations.length > 0 && `(${conversations.length})`}
+            <span className="text-gray-300 ml-1">{showHistory ? "▲" : "▼"}</span>
+          </button>
+          <button
+            onClick={newConversation}
+            className="text-xs px-2.5 py-1 rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+          >
+            + Nouveau
+          </button>
+        </div>
+
+        {showHistory && (
+          <div className="max-h-48 overflow-y-auto flex flex-col divide-y divide-gray-50">
+            {conversations.length === 0 && (
+              <p className="text-xs text-gray-400 p-3">Aucune conversation sauvegardée.</p>
+            )}
+            {conversations.map((conv) => (
+              <button
+                key={conv.id}
+                onClick={() => loadConversation(conv)}
+                className={`flex items-center justify-between px-3 py-2.5 text-left hover:bg-gray-50 transition-colors ${
+                  activeId === conv.id ? "bg-blue-50" : ""
+                }`}
+              >
+                <span className={`text-xs truncate flex-1 ${activeId === conv.id ? "text-blue-700 font-medium" : "text-gray-700"}`}>
+                  {conv.name}
+                </span>
+                <span
+                  onClick={(e) => deleteConversation(conv.id, e)}
+                  className="text-gray-300 hover:text-red-400 ml-2 shrink-0 text-xs px-1"
+                  title="Supprimer"
+                >
+                  ✕
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Controls */}
       <div className="bg-white border border-gray-200 rounded-xl p-3 flex flex-col gap-3">
-
-        {/* Mode selector */}
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-500 font-medium shrink-0">Source :</span>
           <div className="flex gap-1">
@@ -123,16 +238,13 @@ export function ChatTab() {
           </div>
         </div>
 
-        {/* File selector (visible only when library or auto) */}
         {mode !== "web" && docs.length > 0 && (
           <div>
             <p className="text-xs text-gray-500 font-medium mb-1.5">
               Fichiers sources{" "}
-              <span className="font-normal text-gray-400">
-                (laisser vide = tous)
-              </span>
+              <span className="font-normal text-gray-400">(laisser vide = tous)</span>
             </p>
-            <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+            <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
               {docs.map((doc) => (
                 <button
                   key={doc.filename}
@@ -179,9 +291,11 @@ export function ChatTab() {
                   : "bg-white border border-gray-200 text-gray-700 rounded-bl-sm"
               }`}
             >
-              <p className="whitespace-pre-wrap">{msg.content}</p>
+              {msg.role === "assistant"
+                ? <Markdown content={msg.content} />
+                : <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+              }
 
-              {/* Sources + mode badge */}
               {msg.role === "assistant" && (msg.sources?.length || msg.modeUsed) && (
                 <div className="mt-2 pt-2 border-t border-gray-100 flex flex-wrap gap-1.5 items-center">
                   {msg.modeUsed && (

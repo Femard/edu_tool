@@ -30,6 +30,20 @@ def delete_document(filename: str, settings: Settings) -> int:
     return count
 
 
+def get_document_chunks(filename: str, settings: Settings) -> list[str]:
+    """Return all text chunks for a given filename, ordered by page_number."""
+    client = _get_chroma_client(settings.chroma_persist_dir)
+    try:
+        collection = client.get_collection(settings.collection_name)
+    except Exception:
+        return []
+    result = collection.get(where={"filename": filename}, include=["documents", "metadatas"])
+    docs = result.get("documents") or []
+    metas = result.get("metadatas") or []
+    paired = sorted(zip(metas, docs), key=lambda x: x[0].get("page_number", 0))
+    return [text for _, text in paired if text]
+
+
 def get_document_list(settings: Settings) -> list[dict]:
     """Return one metadata dict per unique filename in the collection."""
     client = _get_chroma_client(settings.chroma_persist_dir)

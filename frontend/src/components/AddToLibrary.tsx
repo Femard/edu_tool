@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { ingestPdf, ingestUrl, type IngestPdfMeta } from "@/lib/api";
+import { addPendingIngestion } from "@/lib/pendingIngestions";
 
 const CYCLES = ["Cycle 1", "Cycle 2", "Cycle 3"];
 const NIVEAUX = ["TPS", "PS", "MS", "GS", "CP", "CE1", "CE2", "CM1", "CM2"];
@@ -9,7 +10,7 @@ const DOMAINES = [
   "Français", "Mathématiques", "Sciences", "Histoire-Géographie",
   "Espace/Temps", "Arts Plastiques", "EPS", "EMC",
 ];
-const TYPES = ["Exercice", "Leçon", "Fiche de préparation", "Texte officiel", "Évaluation"];
+const TYPES = ["Exercice", "Leçon", "Fiche de préparation", "Texte officiel", "Évaluation", "Pédagogique"];
 
 const DEFAULT_META: IngestPdfMeta = {
   cycle: "Cycle 2",
@@ -33,7 +34,7 @@ function MetaFields({
     { label: "Niveau", field: "niveau" as const, options: NIVEAUX },
     { label: "Domaine", field: "domaine" as const, options: DOMAINES },
     { label: "Type de ressource", field: "type_ressource" as const, options: TYPES },
-  ];
+  ].filter(({ field }) => !(field === "domaine" && meta.type_ressource === "Pédagogique"));
   return (
     <div className="grid grid-cols-2 gap-2">
       {fields.map(({ label, field, options }) => (
@@ -68,15 +69,19 @@ export function AddToLibrary() {
     setStatus("loading");
     setErrorMsg("");
     try {
+      const effectiveMeta = meta.type_ressource === "Pédagogique" ? { ...meta, domaine: "" } : meta;
       if (mode === "url") {
         const trimmed = urlValue.trim();
         if (!trimmed) throw new Error("URL vide");
-        await ingestUrl(trimmed, meta);
+        await ingestUrl(trimmed, effectiveMeta);
+        addPendingIngestion(trimmed, { cycle: meta.cycle, domaine: effectiveMeta.domaine, source: "URL_Manuel" });
       } else {
         const file = fileRef.current?.files?.[0];
         if (!file) throw new Error("Aucun fichier sélectionné");
-        await ingestPdf(file, meta);
+        await ingestPdf(file, effectiveMeta);
+        addPendingIngestion(file.name, { cycle: meta.cycle, domaine: effectiveMeta.domaine, source: "Upload_Manuel" });
       }
+      window.dispatchEvent(new Event("pendingIngestionAdded"));
       setStatus("success");
       setUrlValue("");
       if (fileRef.current) fileRef.current.value = "";

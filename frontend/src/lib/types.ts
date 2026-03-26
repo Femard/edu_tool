@@ -51,6 +51,8 @@ export interface DocumentInfo {
   source: string;
   cycle: string;
   domaine: string;
+  source_url?: string;
+  type_ressource?: string;
 }
 
 export type ChatMode = "auto" | "library" | "web";

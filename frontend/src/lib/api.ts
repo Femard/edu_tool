@@ -1,6 +1,6 @@
 import type { ChatMode, ChatResponse, DocumentInfo, GenerateResponse, GovResource, GovSearchResponse, SearchFilters, SearchResponse, SSEEvent, WebSearchResponse } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 export async function searchDocuments(
   query: string,
@@ -87,6 +87,16 @@ export interface IngestUrlMeta {
   niveau: string;
   domaine: string;
   type_ressource: string;
+}
+
+export async function eduscolSearch(q: string, maxResults = 12): Promise<WebSearchResponse> {
+  const params = new URLSearchParams({ q, max_results: String(maxResults) });
+  const res = await fetch(`${API_BASE}/api/v1/eduscol-search?${params.toString()}`);
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Erreur ${res.status} : ${detail}`);
+  }
+  return res.json() as Promise<WebSearchResponse>;
 }
 
 export async function govSearch(q: string, maxResults = 12, source: "all" | "eduscol" = "all"): Promise<GovSearchResponse> {
@@ -189,6 +199,16 @@ export async function ingestPdf(file: File, meta: IngestPdfMeta): Promise<void> 
     const detail = await res.text();
     throw new Error(`Erreur ${res.status} : ${detail}`);
   }
+}
+
+export async function getDocumentText(filename: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/v1/documents/${encodeURIComponent(filename)}/text`);
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Erreur ${res.status} : ${detail}`);
+  }
+  const data = await res.json() as { text: string };
+  return data.text;
 }
 
 export async function ingestUrl(url: string, meta: IngestUrlMeta): Promise<void> {

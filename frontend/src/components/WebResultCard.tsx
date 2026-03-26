@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ingestUrl, type IngestUrlMeta } from "@/lib/api";
+import { addPendingIngestion } from "@/lib/pendingIngestions";
 import type { IngestStatus, WebSearchResult } from "@/lib/types";
 
 const CYCLES = ["Cycle 1", "Cycle 2", "Cycle 3"];
@@ -10,7 +11,7 @@ const DOMAINES = [
   "Français", "Mathématiques", "Sciences", "Histoire-Géographie",
   "Espace/Temps", "Arts Plastiques", "EPS", "EMC",
 ];
-const TYPES = ["Exercice", "Leçon", "Fiche de préparation", "Texte officiel", "Évaluation"];
+const TYPES = ["Exercice", "Leçon", "Fiche de préparation", "Texte officiel", "Évaluation", "Pédagogique"];
 
 interface Props {
   result: WebSearchResult;
@@ -36,7 +37,10 @@ export function WebResultCard({ result }: Props) {
     setShowModal(false);
     setStatus("loading");
     try {
-      await ingestUrl(result.url, meta);
+      const effectiveMeta = meta.type_ressource === "Pédagogique" ? { ...meta, domaine: "" } : meta;
+      await ingestUrl(result.url, effectiveMeta);
+      addPendingIngestion(result.title || result.url, { cycle: meta.cycle, domaine: effectiveMeta.domaine, source: "Web" });
+      window.dispatchEvent(new Event("pendingIngestionAdded"));
       setStatus("success");
     } catch {
       setStatus("error");
@@ -115,16 +119,18 @@ export function WebResultCard({ result }: Props) {
                 </select>
               </label>
 
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-600">Domaine</span>
-                <select
-                  value={meta.domaine}
-                  onChange={(e) => handleField("domaine", e.target.value)}
-                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                >
-                  {DOMAINES.map((d) => <option key={d}>{d}</option>)}
-                </select>
-              </label>
+              {meta.type_ressource !== "Pédagogique" && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-gray-600">Domaine</span>
+                  <select
+                    value={meta.domaine}
+                    onChange={(e) => handleField("domaine", e.target.value)}
+                    className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  >
+                    {DOMAINES.map((d) => <option key={d}>{d}</option>)}
+                  </select>
+                </label>
+              )}
 
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-gray-600">Type de ressource</span>
